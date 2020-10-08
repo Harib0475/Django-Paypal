@@ -1,0 +1,100 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block main %}
+    <div class="card w-25 shadow">
+        <div class="card-body">
+            <div class="card-title">
+                <h2>{{ course.name }}</h2>
+            </div>
+            <div class="card-text">
+                <p class="text-muted">{{ course.description }}</p><br>
+                <div class="h4">Price: <strong>{{ course.price }}</strong></div>
+            </div>
+
+        </div>
+        <div class="card-footer bg-white">
+
+            <a href="{% url 'pay' course.pk %}" class="btn btn-warning font-weight-bold btn-lg col-12">Pay</a>
+        </div>
+        <div id='paypal-button-container'></div>
+    </div>
+{% endblock %}
+
+{% block extrascript %}
+    <script
+            src="https://www.paypal.com/sdk/js?client-id={{ client_id }}"> // Required. Replace SB_CLIENT_ID with your sandbox client ID.
+    </script>
+    <script>
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    // Does this cookie string begin with the name we want?
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
+        const csrftoken = getCookie('csrftoken');
+        const course_id = '1'
+        paypal.Buttons({
+
+
+            // Call your server to set up the transaction
+            createOrder: function (data, actions) {
+                return fetch('/paypal/create/' + course_id + '/', {
+                    method: 'post',
+                    headers: {"X-CSRFToken": csrftoken}
+                }).then(function (res) {
+                    return res.json();
+                }).then(function (orderData) {
+                    console.log(orderData)
+                    return orderData.id;
+                });
+            },
+
+            // Call your server to finalize the transaction
+            onApprove: function (data, actions) {
+                return fetch('/paypal/' + data.orderID + '/capture/' + course_id + '/', {
+                    method: 'post',
+                    headers: {"X-CSRFToken": csrftoken}
+                }).then(function (res) {
+                    return res.json();
+                }).then(function (orderData) {
+                    // Three cases to handle:
+                    //   (1) Recoverable INSTRUMENT_DECLINED -> call actions.restart()
+                    //   (2) Other non-recoverable errors -> Show a failure message
+                    //   (3) Successful transaction -> Show a success / thank you message
+
+                    // Your server defines the structure of 'orderData', which may differ
+                    var errorDetail = Array.isArray(orderData.details) && orderData.details[0];
+
+                    if (errorDetail && errorDetail.issue === 'INSTRUMENT_DECLINED') {
+                        // Recoverable state, see: "Handle Funding Failures"
+                        // https://developer.paypal.com/docs/checkout/integration-features/funding-failure/
+                        return actions.restart();
+                    }
+
+                    if (errorDetail) {
+                        var msg = 'Sorry, your transaction could not be processed.';
+                        if (errorDetail.description) msg += '\n\n' + errorDetail.description;
+                        if (orderData.debug_id) msg += ' (' + orderData.debug_id + ')';
+                        // Show a failure message
+                        return alert(msg);
+                    }
+
+                    // Show a success message to the buyer
+                    alert('Transaction completed by ' + orderData.payer.name.given_name);
+                });
+            }
+
+        }).render('#paypal-button-container');
+    </script>
+{% endblock %}
